@@ -1,0 +1,83 @@
+---
+title: "Practical Machine Learning: Course Project"
+author: "dwerbam"
+date: "10/29/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = F, comment = "")
+```
+
+## Description
+The goal of your project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases.
+
+### Bootstrapping...
+```{r, warning=F, message=F}
+library(dplyr)
+library(caret)
+library(randomForest)
+library(tibble)
+```
+
+### Loads and clean up data
+```{r}
+training <- read.csv('pml-training.csv', na.strings = c("NA", ""))
+```
+
+```{r}
+#removing all na columns
+clean_train <- training %>% select_if(function(x) all(!is.na(x)))
+
+# remove useless features that are not relevant to the prediction (first cols: user_name, etc.)
+clean_train <- clean_train[,8:ncol(clean_train)]
+dim(clean_train)
+```
+
+We are left with 53 variables, and we could try here to analyze the correlation but let's first see the performance of the model so far...
+
+```{r}
+set.seed(2323)
+part <- createDataPartition(y=clean_train$classe, p=0.75, list=F)
+split_train <- clean_train[part,]
+split_test <- clean_train[-part,]
+
+dim(split_train)
+```
+
+```{r}
+dim(split_test)
+```
+### Creates a model and test performance with random forest
+```{r, cache=T}
+## preparing cross validation
+ctrl <- trainControl(method = "cv", number = 3, allowParallel = T)
+mod  <- train(classe ~ ., data = split_train, method = "rf", trControl = ctrl) 
+mod
+```
+Accurracy looks almost 0.99. Let's see which features are the most relevant ones:
+```{r}
+mod$finalModel %>% varImpPlot
+```
+```{r}
+mod$finalModel %>% varImp %>% rownames_to_column %>% arrange(desc(Overall)) %>% head(10)
+```
+So, if we would want to compress/reduce the features we could continue from here, but that's for another time.
+
+### Predict new values 
+Using the split_test we will check accurracy of the model on new values (out of sample accurracy):
+```{r}
+pred <- predict(mod, split_test)
+postResample(pred, split_test$classe)
+```
+
+```{r}
+confusionMatrix(pred, split_test$classe)
+```
+### Prediction of 20:
+Time to use the testing.csv for prediction of 20 different test cases:
+```{r}
+testing  <- read.csv('pml-testing.csv',  na.strings = c("NA", ""))
+testing$pred <- predict(mod, testing)
+testing %>% select(problem_id, user_name, pred)
+```
